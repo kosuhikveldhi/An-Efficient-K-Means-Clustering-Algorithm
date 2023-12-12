@@ -1,0 +1,141 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <cstdlib>
+#include <ctime>
+#include <algorithm>
+#include <limits>
+
+using namespace std;
+
+// Function to calculate the Euclidean distance between two points
+double distance(const vector<double>& a, const vector<double>& b) {
+    double sum = 0.0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        sum += pow(a[i] - b[i], 2);
+    }
+    return sqrt(sum);
+}
+
+// Function for K-means++ initialization
+vector<vector<double>> kmeans_pp_init(const vector<vector<double>>& data, int k) {
+    srand(static_cast<unsigned>(time(0)));
+    vector<vector<double>> centroids;
+    centroids.push_back(data[rand() % data.size()]);
+
+    for (int i = 1; i < k; ++i) {
+        vector<double> distances(data.size(),numeric_limits<double>::max());
+
+        for (size_t j = 0; j < data.size(); ++j) {
+            for (const auto& centroid : centroids) {
+                double dist = distance(data[j], centroid);
+                distances[j] = min(distances[j], dist);
+            }
+        }
+
+        double sum = 0.0;
+        for (const auto& dist : distances) {
+            sum += dist;
+        }
+
+        double rand_value = static_cast<double>(rand()) / RAND_MAX * sum;
+        sum = 0.0;
+
+        for (size_t j = 0; j < distances.size(); ++j) {
+            sum += distances[j];
+            if (sum >= rand_value) {
+                centroids.push_back(data[j]);
+                break;
+            }
+        }
+    }
+
+    return centroids;
+}
+
+// Function for K-means clustering
+pair<vector<vector<double>>, vector<int>> kmeans(const vector<vector<double>>& data, int k, int max_iters = 100, double tol = 1e-4, int batch_size = 0) {
+    vector<vector<double>> centroids = kmeans_pp_init(data, k);
+    vector<int> labels(data.size(), -1);
+
+    for (int iter = 0; iter < max_iters; ++iter) {
+        if (batch_size > 0) {
+            random_shuffle(labels.begin(), labels.end());
+        }
+
+        // Assignment step
+        for (size_t i = 0; i < data.size(); i += (batch_size > 0 ? batch_size : 1)) {
+            size_t end = min(i + batch_size, data.size());
+            for (size_t j = i; j < end; ++j) {
+                double min_dist = numeric_limits<double>::max();
+                for (int c = 0; c < k; ++c) {
+                    double dist = distance(data[j], centroids[c]);
+                    if (dist < min_dist) {
+                        min_dist = dist;
+                        labels[j] = c;
+                    }
+                }
+            }
+        }
+
+        // Update step
+        vector<vector<double>> new_centroids(k, vector<double>(data[0].size(), 0.0));
+        vector<int> cluster_sizes(k, 0);
+
+        for (size_t i = 0; i < data.size(); ++i) {
+            int cluster = labels[i];
+            for (size_t j = 0; j < data[i].size(); ++j) {
+                new_centroids[cluster][j] += data[i][j];
+            }
+            cluster_sizes[cluster]++;
+        }
+
+        for (int c = 0; c < k; ++c) {
+            for (size_t j = 0; j < new_centroids[c].size(); ++j) {
+                if (cluster_sizes[c] > 0) {
+                    new_centroids[c][j] /= cluster_sizes[c];
+                }
+            }
+        }
+
+        // Check for convergence
+        double dist_sum = 0.0;
+        for (int c = 0; c < k; ++c) {
+            dist_sum += distance(centroids[c], new_centroids[c]);
+        }
+
+        if (dist_sum < tol) {
+            break;
+        }
+
+        centroids = new_centroids;
+    }
+
+    return {centroids, labels};
+}
+
+int main() {
+    // Generate some random 2D data for testing
+    srand(static_cast<unsigned>(time(0)));
+    vector<vector<double>> data;
+    for (int i = 0; i < 150; ++i) {
+        if (i < 50) {
+            data.push_back({static_cast<double>(rand() % 5), static_cast<double>(rand() % 5)});
+        } else if (i < 100) {
+            data.push_back({static_cast<double>(rand() % 5 + 5), static_cast<double>(rand() % 5 + 5)});
+        } else {
+            data.push_back({static_cast<double>(rand() % 5 + 10), static_cast<double>(rand() % 5 + 10)});
+        }
+    }
+
+    // Apply K-means algorithm with mini-batch
+    int k = 3;
+    auto result = kmeans(data, k, 100, 1e-4, 10);
+
+    // Print the results
+    for (size_t i = 0; i < data.size(); ++i) {
+        cout << "Data Point: [" << data[i][0] << ", " << data[i][1] << "] - Cluster: " << result.second[i] << endl;
+    }
+
+    return 0;
+}
